@@ -61,6 +61,7 @@ export class JackpotChallenge implements MiniGame {
   private seatIdx = -1; // resolved pocket index
   private engIdx = -1; // notch the ball is currently meshed into
   private engTime = 0; // how long it has stayed meshed in that notch
+  private engGap = 0; // grace timer: brief contact-jitter exits don't reset the mesh
   private stillTime = 0; // how long the ball has been nearly motionless (stuck detector)
   private result: Prize = MEDAL_100;
 
@@ -274,6 +275,26 @@ export class JackpotChallenge implements MiniGame {
       .setRestitution(0.1)
       .setCollisionGroups(groups(GROUP.DISC, GROUP.DISC));
     this.physics.world.createCollider(cd, body);
+
+    // BACK PLATE behind the disc. The U-slots are cut THROUGH the slab and the rig leans
+    // back, so a ball that drops into a notch keeps accelerating in local −z — without a
+    // back wall it falls OUT the rear of the disc before the engagement timer can confirm
+    // the pocket (user-visible as "entered 100 but the result became something else").
+    // The plate caps that motion: a seated ball rests inside the notch against it.
+    const backZ = -J.thickness / 2 - 0.04;
+    const back = new THREE.Mesh(
+      new THREE.CircleGeometry(J.radius + 0.1, 56),
+      new THREE.MeshStandardMaterial({ color: 0x131a30, metalness: 0.6, roughness: 0.6 })
+    );
+    back.position.z = backZ + 0.031; // visual face flush with the collider surface
+    this.group.add(back);
+    const bd = R.ColliderDesc.cylinder(0.03, J.radius + 0.1)
+      .setTranslation(0, 0, backZ)
+      .setRotation({ x: qYtoZ.x, y: qYtoZ.y, z: qYtoZ.z, w: qYtoZ.w })
+      .setFriction(0.2) // low: the notch walls, not this plate, carry the seated ball
+      .setRestitution(0.05)
+      .setCollisionGroups(groups(GROUP.DISC, GROUP.DISC));
+    this.physics.world.createCollider(bd, body);
   }
 
   private buildStand(): void {
@@ -315,6 +336,7 @@ export class JackpotChallenge implements MiniGame {
     this.seatIdx = -1;
     this.engIdx = -1;
     this.engTime = 0;
+    this.engGap = 0;
     this.stillTime = 0;
     this.spin = 0;
     this.spinSpeed = J.spinSpeed;
@@ -336,11 +358,13 @@ export class JackpotChallenge implements MiniGame {
     this.ballBody = this.physics.world.createRigidBody(
       R.RigidBodyDesc.dynamic()
         .setTranslation(p.x, p.y, p.z)
-        // high damping so the ball sheds energy fast and SETTLES in the face/shelf corner at the
-        // bottom (the 90° tray gives no ramp, only the rig's back-tilt) — a settled ball drops
-        // into a passing open notch, instead of skating over the wide shelf forever
-        .setLinearDamping(1.5)
-        .setAngularDamping(1.5)
+        // moderate damping: enough that the pendulum decays and eventually SETTLES at the
+        // bottom (a settled ball drops into a passing notch), but low enough that it swings
+        // several times first. While the ball is moving fast it crosses a notch mouth quicker
+        // than it can sink in, so it skates over — the 入るか入らないか suspense is physical.
+        // (1.5 killed the swing instantly → the first passing notch always caught it.)
+        .setLinearDamping(0.5)
+        .setAngularDamping(0.9)
         .setCcdEnabled(true)
     );
     // a PERFECT SPHERE collider (not a convex-hull icosphere) so it rolls truly round
@@ -350,6 +374,12 @@ export class JackpotChallenge implements MiniGame {
       .setFriction(0.6)
       .setCollisionGroups(groups(GROUP.DISC, GROUP.DISC));
     this.physics.world.createCollider(cd, this.ballBody);
+    // launch it DOWN the rail rather than releasing from rest — a ball that dawdles at the
+    // top passes the notches there slowly enough to be caught at once (no suspense). With a
+    // push it stays fast everywhere until the damping bleeds it off, so the catch comes on a
+    // later, slower pass.
+    const tv = this.tmp.set(-Math.sin(a), Math.cos(a), 0).multiplyScalar(2.4).applyQuaternion(this.quat);
+    this.ballBody.setLinvel({ x: tv.x, y: tv.y, z: tv.z }, true);
     this.ballMesh.visible = true;
     this.ballLight.intensity = 2.2;
   }
@@ -409,11 +439,22 @@ export class JackpotChallenge implements MiniGame {
         // 無限). The only forced resolve is a `lost` safety (ball escaped / NaN), which
         // should never happen with the glass + rail containment.
         const e = this.engaged();
-        if (e.lost) { this.resolve(this.bottomNotch()); break; }
+        // escaped/NaN guard — should never fire now the back plate closes the slots. If it
+        // somehow does, honour the LAST notch the ball was meshed into (what the player saw
+        // it enter), not whichever pocket happens to sit at the bottom.
+        if (e.lost) { this.resolve(this.engIdx >= 0 ? this.engIdx : this.bottomNotch()); break; }
         // the ball must stay meshed in the SAME notch briefly (riding with the disc) to
-        // count — a glancing dip doesn't
-        if (e.inNotch && e.idx === this.engIdx) this.engTime += dt;
-        else { this.engIdx = e.inNotch ? e.idx : -1; this.engTime = 0; }
+        // count — a glancing dip doesn't. Trimesh contact jitter can pop the ball above the
+        // z-threshold for a frame or two, so a short grace period keeps the latch instead of
+        // restarting the timer (the restart race was letting an entered ball ride up & spill).
+        if (e.inNotch) {
+          if (e.idx === this.engIdx) this.engTime += dt;
+          else { this.engIdx = e.idx; this.engTime = dt; }
+          this.engGap = 0;
+        } else if (this.engIdx >= 0) {
+          this.engGap += dt;
+          if (this.engGap > 0.12) { this.engIdx = -1; this.engTime = 0; this.engGap = 0; }
+        }
         if (this.engTime > 0.35) { this.resolve(this.engIdx); break; }
 
         // ANTI-STUCK: the disc is kinematic (infinite mass), so a ball WEDGED between a slot
