@@ -338,7 +338,9 @@ export class JackpotChallenge implements MiniGame {
     this.engTime = 0;
     this.engGap = 0;
     this.stillTime = 0;
-    this.spin = 0;
+    // NOTE: spin is NOT reset — the disc keeps the phase it idled at, so which pocket
+    // meets the ball is different every play (resetting to 0 made the catch geometry —
+    // and therefore the PRIZE — nearly identical each time).
     this.spinSpeed = J.spinSpeed;
     bus.emit('sfx', { name: 'spin' });
     this.applyDisc();
@@ -378,7 +380,12 @@ export class JackpotChallenge implements MiniGame {
     // top passes the notches there slowly enough to be caught at once (no suspense). With a
     // push it stays fast everywhere until the damping bleeds it off, so the catch comes on a
     // later, slower pass.
-    const tv = this.tmp.set(-Math.sin(a), Math.cos(a), 0).multiplyScalar(2.4).applyQuaternion(this.quat);
+    // Random launch speed: fast enough that it doesn't dawdle over the notches near the
+    // spawn point, low enough (with damping) that it cannot crest the far end of the rail
+    // arc. The variance (with the randomised wait + carried-over disc phase) is what makes
+    // each play's catch — timing AND pocket — come out different.
+    const v0 = 1.5 + Math.random() * 0.9;
+    const tv = this.tmp.set(-Math.sin(a), Math.cos(a), 0).multiplyScalar(v0).applyQuaternion(this.quat);
     this.ballBody.setLinvel({ x: tv.x, y: tv.y, z: tv.z }, true);
     this.ballMesh.visible = true;
     this.ballLight.intensity = 2.2;
@@ -397,7 +404,7 @@ export class JackpotChallenge implements MiniGame {
    * notch, its local z drops from the front plane (~railFrontZ) into the disc slab (~0) —
    * that, at rim radius, means it has meshed with notch `idx`.
    */
-  private engaged(): { inNotch: boolean; idx: number; lost: boolean } {
+  private engaged(): { inNotch: boolean; idx: number; out: boolean; lost: boolean } {
     const t = this.ballBody!.translation();
     this.tmp.set(t.x - J.x, t.y - J.y, t.z - J.z).applyQuaternion(this.quatInv); // rig frame
     const cs = Math.cos(this.spin), sn = Math.sin(this.spin);
@@ -406,11 +413,16 @@ export class JackpotChallenge implements MiniGame {
     const r = Math.hypot(lx, ly);
     let k = Math.round(Math.atan2(ly, lx) / SEG) % N;
     if (k < 0) k += N;
-    // "in a notch" = the ball has moved BEHIND the front-cap plane (z < thickness/2) at rim
-    // radius — a bit lenient so a ball caught at the slot mouth & being carried also counts.
-    const inNotch = this.tmp.z < J.thickness * 0.52 && r > ROOT_R - 0.06 && r < J.radius + 0.08;
+    // "in a notch" = the ball has sunk behind the front-cap plane at rim radius — lenient
+    // enough that one perched in the slot MOUTH being carried also counts (what the player
+    // sees as "entered").
+    const inNotch = this.tmp.z < J.thickness * 0.6 && r > ROOT_R - 0.06 && r < J.radius + 0.08;
+    // `out` = the ball has crested the RIM (on the rail its centre stays ≤ ~railRadius; only
+    // a ball being carried IN a notch past the rail's end can get flung radially outward).
+    // Caught here it is still adjacent to the notch that carried it — k IS that notch.
+    const out = r > J.radius + 0.24;
     const lost = r > J.radius + 1.2 || this.tmp.y < -(J.radius + 1.5);
-    return { inNotch, idx: k, lost };
+    return { inNotch, idx: k, out, lost };
   }
 
   update(dt: number): void {
@@ -439,9 +451,11 @@ export class JackpotChallenge implements MiniGame {
         // 無限). The only forced resolve is a `lost` safety (ball escaped / NaN), which
         // should never happen with the glass + rail containment.
         const e = this.engaged();
-        // escaped/NaN guard — should never fire now the back plate closes the slots. If it
-        // somehow does, honour the LAST notch the ball was meshed into (what the player saw
-        // it enter), not whichever pocket happens to sit at the bottom.
+        // A ball being carried in a notch past the rail's end gets flung over the rim and
+        // would sail off the rig — resolve it the moment it crests, to the notch it is AT
+        // (judging later, from the stale latch, is what read as "one pocket behind" to the
+        // player). True escape/NaN keeps the last-meshed fallback.
+        if (e.out) { this.resolve(e.idx); break; }
         if (e.lost) { this.resolve(this.engIdx >= 0 ? this.engIdx : this.bottomNotch()); break; }
         // the ball must stay meshed in the SAME notch briefly (riding with the disc) to
         // count — a glancing dip doesn't. Trimesh contact jitter can pop the ball above the
