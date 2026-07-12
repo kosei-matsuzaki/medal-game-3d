@@ -1,0 +1,9 @@
+node_modules
+dist
+*.log
+.DS_Store
+Thumbs.db
+
+# ローカル設定・テスト出力
+.claude/
+/*.png
