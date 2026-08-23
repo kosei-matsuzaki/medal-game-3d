@@ -9,7 +9,7 @@ Three.js + Rapier（物理エンジン）で動く、ブラウザ向けの本格
 > 作品概要・スクリーンショット・AI 利用については [docs/PORTFOLIO.md](docs/PORTFOLIO.md)、
 > 画づくり・UI の設計方針と改善指示は [docs/design-review.md](docs/design-review.md) を参照してください。
 
-![gameplay](docs/screenshots/01-gameplay.png)
+![gameplay](docs/portfolio/hero-poster.webp)
 
 ## 動かし方
 
