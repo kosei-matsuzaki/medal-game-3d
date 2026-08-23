@@ -38,7 +38,9 @@ export class MedalPool {
       LAYOUT.medal.radius,
       LAYOUT.medal.radius,
       LAYOUT.medal.height,
-      28
+      // 40, not 28: at this radius a 28-gon silhouette is visibly faceted when a
+      // coin stands on edge, and a faceted rim undoes the milled-edge texture.
+      40
     );
 
     this.standardMesh = new THREE.InstancedMesh(geo, mats.standard, capacity);
@@ -75,7 +77,7 @@ export class MedalPool {
     body.sleep();
 
     const cd = R.ColliderDesc.cylinder(LAYOUT.medal.height / 2, LAYOUT.medal.radius)
-      .setDensity(2.2)
+      .setDensity(3.8)
       .setFriction(0.35)
       .setRestitution(0.03)
       .setActiveEvents(R.ActiveEvents.COLLISION_EVENTS)

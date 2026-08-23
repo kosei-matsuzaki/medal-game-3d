@@ -7,9 +7,10 @@ export interface SaveData {
   // Player progression: level + experience toward the next level.
   level: number;
   exp: number;
-  // Disc (円盤) JP challenge persistent state: which of the 6 holes are filled.
-  // The JP-Chance hole is never marked filled; it stays open until it is hit.
-  disc: { filled: boolean[] };
+  // すごろく board journey: piece position, current 目的地, owned 物件駅,
+  // remaining 貧乏神 
+  // turns and the held card. Persisted so a session resumes mid-leg.
+  board: { pos: number; runs: number; pending: { twice: boolean; pick: boolean; boost: boolean } };
   settings: {
     quality: 'high' | 'medium' | 'low' | 'auto';
     muted: boolean;
@@ -18,8 +19,7 @@ export interface SaveData {
 }
 
 const KEY = 'gold-rush-save';
-const CURRENT_VERSION = 3;
-export const DISC_HOLES = 6;
+const CURRENT_VERSION = 6;
 
 const DEFAULT: SaveData = {
   version: CURRENT_VERSION,
@@ -29,7 +29,7 @@ const DEFAULT: SaveData = {
   bestWin: 0,
   level: 1,
   exp: 0,
-  disc: { filled: new Array(DISC_HOLES).fill(false) },
+  board: { pos: 0, runs: 0, pending: { twice: false, pick: false, boost: false } },
   settings: { quality: 'auto', muted: false, volume: 0.8 },
 };
 
@@ -64,20 +64,11 @@ export class SaveManager {
       ...d,
       level: Math.max(1, d.level ?? 1),
       exp: Math.max(0, d.exp ?? 0),
-      disc: { filled: this.normalizeDisc(d.disc?.filled) },
+      board: { ...DEFAULT.board, ...(d.board ?? {}) },
       settings: { ...DEFAULT.settings, ...(d.settings ?? {}) },
       version: CURRENT_VERSION,
     };
     return merged;
-  }
-
-  /** Coerce a persisted disc.filled array to exactly DISC_HOLES booleans. */
-  private normalizeDisc(filled?: boolean[]): boolean[] {
-    const out = new Array(DISC_HOLES).fill(false);
-    if (Array.isArray(filled)) {
-      for (let i = 0; i < DISC_HOLES; i++) out[i] = !!filled[i];
-    }
-    return out;
   }
 
   /** Debounced save. */

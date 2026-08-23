@@ -5,26 +5,32 @@ import { GameStore } from '../state/GameStore';
 import { Fever } from '../state/Fever';
 import { MonitorUI } from '../ui/MonitorUI';
 import { MedalPool } from '../pusher/MedalPool';
-import { SlotStock } from '../state/SlotStock';
 import { Economy } from '../state/Economy';
-import { BallManager } from '../pusher/BallManager';
+import { Board } from '../state/Board';
+import { MiniBallManager } from '../pusher/MiniBallManager';
 import { PusherPlate } from '../pusher/PusherPlate';
 import { CameraRig } from '../camera/CameraRig';
+import { Loop } from './Loop';
+import { FIXED_DT } from './Time';
 
 /** Systems the debug console pokes at. Supplied by Game once everything is built. */
 export interface DebugDeps {
+  /** the fixed-timestep loop, so tests can fast-forward game time */
+  loop: Loop;
   fsm: GameStateMachine;
   store: GameStore;
   fever: Fever;
   monitorUI: MonitorUI;
   pool: MedalPool;
-  stock: SlotStock;
+  board: Board;
   economy: Economy;
-  balls: BallManager;
+  balls: MiniBallManager;
   pusher: PusherPlate;
   rig: CameraRig;
   /** seed n medals into the field (Game.seedField). */
   fill: (n: number) => void;
+  /** insert ONE medal exactly as a player would; false if it could not be taken */
+  insert: () => boolean;
 }
 
 /**
@@ -36,17 +42,36 @@ export function installDebug(d: DebugDeps): void {
   if (!location.search.includes('debug')) return;
   (window as Window & { __medal?: object }).__medal = {
     state: () => d.fsm.state,
-    force: (kind: 'slot' | 'disc' | 'jackpot') => d.fsm.forceEnter(kind),
+    force: (kind: 'sugoroku' | 'bowl' | 'chinchiro') => d.fsm.forceEnter(kind),
+    chin: () => d.fsm.debugChinchiro(),
+    /**
+     * Fast-forward: run n extra physics+logic steps per frame and stop drawing.
+     * n=0 restores normal play. Measurement only — the simulation is unchanged,
+     * it just runs without waiting for a rasterizer that is 100× slower than the
+     * physics it is there to display.
+     */
+    turbo: (n = 0) => {
+      d.loop.turbo = Math.max(0, Math.min(400, n | 0));
+      return d.loop.turbo;
+    },
+    /**
+     * Advance the simulation by `seconds` immediately, without waiting for
+     * frames. Returns the new total game time. This is how the measurement tests
+     * buy game time — a headless browser caps requestAnimationFrame at about
+     * 1fps, so anything that waits for frames measures the scheduler, not the
+     * machine.
+     */
+    simulate: (seconds: number) => d.loop.runSteps(Math.round(seconds / FIXED_DT)),
+    /** Total SIMULATED seconds so far — advances with the physics, not the clock. */
+    gameSeconds: () => d.loop.gameTime,
     level: () => ({ level: d.store.level, exp: d.store.exp }),
     addExp: (n: number) => d.store.addCredits(n),
     fever: () => d.fever.debugActivate(),
     feverMult: () => d.fever.mult,
     feverOnMonitor: () => d.monitorUI.feverShown,
-    disc: () => d.store.discFilled,
-    fillDiscHole: (i: number) => d.store.fillDiscHole(i),
-    resetDisc: () => d.store.resetDisc(),
-    dropBalls: (n = LAYOUT.ballsPerDisc) => {
-      for (let i = 0; i < n; i++) bus.emit('ball:dropped', {});
+    /** Earn n board turns without physically working balls to the front. */
+    spin: (n = 1) => {
+      for (let i = 0; i < n; i++) bus.emit('ball:scored', {});
     },
     addJackpot: (n: number) => d.store.addToJackpot(n),
     addCredits: (n: number) => d.store.addCredits(n),
@@ -55,17 +80,21 @@ export function installDebug(d: DebugDeps): void {
     pauseChuckers: (v: boolean) => (d.fsm.ignoreChuckers = v),
     clearMedals: () => d.pool.drainAll(),
     stats: () => d.pool.debugStats(),
-    stock: () => d.stock.slots.slice(),
-    addStock: (n: number) => {
-      for (let i = 0; i < n; i++) d.stock.add();
-    },
-    roll: () => d.economy.slotRoll(),
-    rollFever: () => d.economy.slotRoll(true),
-    spawnBall: () => d.balls.spawn(),
+    board: () => ({
+      pos: d.board.pos,
+      toGoal: d.board.toGoal,
+      runs: d.board.runs,
+      pending: { ...d.board.pending },
+    }),
+    boardPos: (i: number) => d.board.debugSetPos(i),
+    goalNear: () => d.board.debugGoalNear(),
+    roll: () => d.economy.roll(),
+    spawnBall: () => d.balls.dispense(),
     ballCount: () => d.balls.activeCount(),
-    spawnBallAtLane: () => d.balls.spawnAt(0, 1.3, d.pusher.deckZ() + LAYOUT.slotLane.zLocal),
     spawnBallAt: (x: number, y: number, z: number) => d.balls.spawnAt(x, y, z),
     fill: (n: number) => d.fill(n),
+    insert: () => d.insert(),
+    credits: () => d.store.credits,
     // free camera: current position + whether the user has grabbed the view
     cam: () => {
       const p = d.rig.camera.position;

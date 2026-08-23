@@ -19,6 +19,53 @@ export const LAYOUT = {
     frontZ: 3.4, // OPEN front edge — coins fall off here (longer lower field)
   },
 
+  // The lower field is a TRAPEZOID seen from above: full width at the back, then
+  // tapering in toward the player. The taper only begins in FRONT of the pusher's
+  // furthest reach (ramp base tops out at z=0.6) — the deck is a fixed-width slab,
+  // so narrowing the walls anywhere it travels would either jam it or open a slot
+  // down each side. The taper does real work: it squeezes the coin bank toward
+  // the side walls, which is where the drains are.
+  taper: {
+    startZ: 0.7, // full width behind this, narrowing in front of it
+    frontHalfWidth: 2.05, // half-width at the open front edge (from 2.7)
+  },
+
+  // Side drain holes (横穴) — openings cut into the TAPERED SIDE WALLS, not the
+  // floor. Height is the whole trick: a medal lying flat is 0.08 thick and slips
+  // straight out, while the mini ball is a 0.52∅ sphere and physically cannot fit
+  // through a 0.22 gap. That single number replaces what used to need an
+  // invisible ball-only guide rail, and it is honest — you can see why the ball
+  // stays in.
+  sideHole: {
+    z0: 1.0, // opening runs from here…
+    z1: 3.1, // …to here. Deliberately shorter than the full wall: running it
+    // corner-to-corner drained well but read as "the side of the cabinet is
+    // missing" rather than as a pair of drain slots.
+    // Height is the whole trick: a medal lying flat is 0.08 thick and slips
+    // straight out, while the mini ball is a 0.52∅ sphere and physically cannot
+    // fit. That single number replaces what used to need an invisible ball-only
+    // guide rail, and it is honest — you can see why the ball stays in.
+    //
+    // It has to be THIS generous because the taper works against the drain: a
+    // narrowing channel presses coins INWARD, away from the walls, so the wall
+    // openings get far less traffic than floor holes did. Measured at 0.22 high
+    // the field drained only 11% (vs 52% for floor holes), which left no house
+    // edge at all and sent payback past 200%.
+    // Taller than it needs to be for a coin, because the floor is FLAT: the taper
+    // presses coins inward, away from the walls, so the opening has to be a big
+    // target to shed enough of them. Capped by the ball — at ⌀0.76 against a 0.58
+    // gap the ball is comfortably excluded while a coin (0.08 thick) walks out.
+    // Held BELOW the mini cube's 0.52 edge so the cube can never wash out. The
+    // drain rate is what caps how much the board is allowed to pay, so every
+    // millimetre the cube grows is a millimetre this can grow with it.
+    // 0.46, held 0.06 clear of the mini cube's 0.52 edge so the cube still cannot
+    // wash out. Raised (and the opening lengthened, z0 1.35 -> 1.0) because the
+    // medal was made larger and thicker for the new struck-metal look, and a
+    // fatter coin rides the taper further from the wall: measured drain fell to
+    // 24%, at which point the machine returned ~110% and the house LOST money.
+    height: 0.46,
+  },
+
   // Front collection tray (受け皿): coins that slide off the OPEN front edge fall
   // DOWN into this wide, low bin in front of the cabinet, briefly pile up where the
   // player can watch them land, then are collected (credited + cleared). Lower and
@@ -44,21 +91,18 @@ export const LAYOUT = {
     backDepth: 2.4,
     frontBottom: 0.8,
     slopeAngleDeg: 45, // ramp incline from horizontal
-    homeZ: -1.0,
-    amplitude: 0.8,
+    // The front is a TRAPEZOID in side profile, not a wedge: a vertical face of
+    // this height at the bottom, then the ramp above it. A ramp that runs all the
+    // way down to the table meets the lower deck at a feather edge and simply
+    // rides up over the coins lying there instead of pushing them.
+    faceHeight: 0.3,
+    // Stroke: pulled forward and shortened so the deck no longer disappears under
+    // the back wall on the return. Max-forward reach is unchanged (front face at
+    // z=0.6, still clear of the taper at 0.7) and the back-bottom still lands on
+    // backWallZ at max forward, so no gap opens behind it.
+    homeZ: -0.75,
+    amplitude: 0.55,
     speed: 1.4,
-  },
-
-  // Slot lane on the RAMP centre: TWO divider walls form a centre lane. When a
-  // coin slides down BETWEEN them (through the sensor) the slot starts. Positions
-  // are LOCAL to the deck (the lane moves with the pusher).
-  slotLane: {
-    xHalf: 0.36, // half-distance between the two divider walls (~single-file)
-    wallHeight: 0.44,
-    wallThickness: 0.06,
-    zLocal: 0.35, // local z centre of the walls/sensor on the ramp
-    zDepth: 1.0, // length along the ramp
-    sensorY: 0.4, // local y centre of the trigger sensor
   },
 
   // Spawn chute: coins are inserted at the very BACK of the upper deck (二段目),
@@ -88,87 +132,142 @@ export const LAYOUT = {
   groundY: -1.15,
 
   killY: -3.5,
-  medal: { radius: 0.3, height: 0.08, mass: 0.04 },
+  // A real pusher token is a chunky thing you can feel the edge of. The old
+  // 0.30 x 0.08 disc was proportioned like a washer; this is a little wider and
+  // noticeably thicker, which is what carries the milled edge on screen.
+  // NOTE: both figures feed the drain rate — a wider coin packs differently
+  // against the side openings — so changing them means re-running draintest.
+  medal: { radius: 0.32, height: 0.105, mass: 0.04 },
   maxMedals: 500,
-  // Special ball (slot BALL match) that rolls the field. Field balls accumulate:
-  // every BALLS_PER_DISC balls that leave the field triggers the disc challenge.
-  ball: { radius: 0.32 },
+  // Mini ball (ミニボール) — the すごろく trigger, and the ONLY way the board
+  // advances. One is dispensed from the hopper every `medalsPerBall` medals the
+  // player inserts; it is then shoved across the field like a coin. Drop it off
+  // the FRONT edge and it spins the board once. Send it down a side hole and it
+  // is simply lost — same rule as a medal.
+  // The playing piece is a small ROUNDED die — the same object the board is
+  // driven by, so the machine has one vocabulary. Heavily filleted so it rolls
+  // instead of sitting where it lands.
+  //
+  // Its edge is what sets `sideHole.height`, not the other way round: a rounded
+  // cuboid's minimum width in any orientation is still its edge, so the drain
+  // opening has to stay clear of it or the board's only fuel washes away.
+  miniBall: { size: 0.52, round: 0.19 },
+  /** Medals the player must insert to earn one mini ball (≈ one board spin). */
+  // Raised deliberately. The payback ratio fixes medals-dispensed-per-medal-in,
+  // so the ONLY way to make an individual win feel like a win is to make wins
+  // rarer. At 20 the board had ~5 medals to hand out per turn, which reads as
+  // nothing; at 25 it has ~6.3 and the bowl can pay in double digits.
+  // Medals inserted per dice cube dispensed — i.e. what one board turn COSTS.
+  //
+  // THE payback lever. Everything else fights over scraps: with a measured drain
+  // of 29.3% the front tray hands back 71% of every medal inserted no matter what
+  // the board does. This changes the denominator instead, so it moves payback
+  // directly — and because a turn still pays what it always paid, raising it makes
+  // wins rarer AND bigger, which is the only way to make one feel like an event
+  // when the long-run ratio is fixed.
+  //
+  // 40 with PAYOUT_SCALE 0.65 models at 90.2%. See README「メダル収支」.
+  medalsPerBall: 40,
 
-  // Disc (円盤) JP challenge — a PHYSICAL turntable installed to the RIGHT of the
-  // pusher cabinet, lying FLAT (parallel to the ground) on a pedestal. A real
-  // dynamic ball rolls on the spinning disc and drops into one of 6 recessed
-  // circular holes (real Rapier physics). One hole is JP-Chance; the others fill up
-  // and persist across plays. The camera looks down at it (CameraRig.DISC).
-  disc: {
-    x: 4.6, // right of the right wall (halfWidth ≈ 2.7)
-    y: 2.0, // deck height (top of the pedestal)
-    z: 0.4,
-    radius: 1.1, // playable disc radius (deck)
-    rimHeight: 0.45, // containing wall around the rim
-    holeRing: 0.64, // radius at which the 6 hole centres sit
-    holeRadius: 0.14, // dimple opening radius — SMALLER than the ball. Each dent is a
-    // spherical hollow with the SAME radius as the ball, so the ball's underside seats
-    // flush into it (depth is derived, ≈ ballRadius − √(ballRadius²−holeRadius²)).
-    ballRadius: 0.16, // the lottery ball
-    domeHeight: 1.0, // transparent dome cover over the disc (keeps the ball from flying out)
-    count: 6,
-    jpIndex: 0, // which of the 6 holes is JP-Chance
+  // DICE TRAY & JACKPOT BOWL — both BOLTED TO THE TAPER WALLS.
+  //
+  // They used to stand on their own pedestals well outboard of the cabinet, at
+  // x=±4.3. Two problems with that: from the play camera they sat far back and
+  // off to the sides where they were hard to see, and a lit column holding a bowl
+  // in mid-air reads as set dressing rather than as part of the machine.
+  //
+  // Now each one hangs on the OUTER face of the angled wall of the trapezoid — the
+  // same wall the drain slots are cut into — so they belong to the cabinet, and
+  // they sit forward (z≈2.2) where the player is already looking. Both are ~62%
+  // of their old size to fit there. Scaling a gravity-driven simulation does
+  // change it (gravity does not scale with the model), so the launch speeds are
+  // scaled by √0.62 as well, which is the dimensionally correct factor and keeps
+  // the throw and the orbit looking exactly as they did at full size.
+  //
+  // WALL_YAW is the taper's own angle. The units are rotated to match it so they
+  // sit flush instead of leaving a wedge of daylight against the wall.
+
+  // DICE TRAY (ダイストレイ) — on the LEFT taper wall, mirroring the bowl.
+  //
+  // The board is moved by a REAL die: it is thrown into this tray, tumbles, and
+  // whichever face ends up pointing at the ceiling is the number. Nothing is
+  // drawn in advance and animated toward — same principle as the bowl, and the
+  // reason the two units bracket the cabinet.
+  dice: {
+    // NB: no `x`. Which x puts this flush against the taper is a consequence of
+    // the taper's own geometry, so wallMount() derives it; authoring it here as
+    // well would give the same fact two homes and let them drift apart.
+    y: 1.35, // tray floor. Below the wall top (2.4) so the unit reads as fitted
+    // into the side of the cabinet rather than perched on top of it.
+    z: 2.22,
+    half: 0.61, // inner half-width of the tray floor. Snug on purpose — in a big
+    // tray the dice are specks and the throw reads as nothing happening — but it
+    // has to hold THREE of them for チンチロ without them shouldering each other
+    // over the wall.
+    wall: 0.42, // containing wall height. It has to CLEAR the die (0.385), or the
+    // die sits proud of the rim and the whole thing reads as a coaster with a
+    // block on it rather than as a tray with dice in it. Taller than one die
+    // strictly needs, too, because three tumbling together bounce off each other
+    // and not just off the floor.
+    size: 0.385, // die edge length
+    round: 0.124, // corner fillet, matching the playing cube
+    throwSpeed: 1.6, // gentle: the dice are dropped in and tumble, not fired
+    // A throw MUST resolve: past this the die is nudged, and past twice this it
+    // is snapped flat to its nearest face. A board that can hang on a cocked die
+    // is worse than one that occasionally straightens it.
+    patience: 2.0,
   },
-  ballsPerDisc: 4, // field balls that must drop before the disc challenge fires
 
-  // JP CHALLENGE (ジャックポットチャレンジ) — reached only by landing in the disc's
-  // JP-Chance hole. A big VERTICAL SOLID DISC (installed on the LEFT, facing the player,
-  // rotating CONSTANTLY about Z) with `pocketCount` U-shaped notches CUT INTO ITS OUTER RIM
-  // (円盤の外側をU字にくりぬいた形). Each notch is a prize pocket (100 / 200 / 300 メダル or
-  // JPC). A ball starts at one END of a ~90° ARC RAIL sitting IN FRONT of the disc face and
-  // swings like a PENDULUM along it, leaning on the face (the rig tilts back so gravity
-  // presses it on). Friction + the timing of a passing notch slow it until it MESHES with a
-  // notch (falls into the opening) — WHICH pocket it meshes with IS the result (入ったら
-  // それで決まり, no "carried to the top" judgement). REAL physics, no scripted guidance; the
-  // ball is sandwiched between a front glass and the disc face and drops in only where the
-  // face opens (a notch).
-  jp: {
-    x: -5.6, // left of the cabinet, mirroring the disc. Far enough out that the disc rim
-    // AND its glass cover (radius+0.1 = 2.6) clear the cabinet's left wall/glass (outer
-    // edge x ≈ -2.8): glass edge lands at -3.0, a 0.2 gap — no visual overlap.
-    y: 3.7, // disc centre height (raised so the bigger disc clears the ground)
-    z: 0.4,
-    radius: 2.5, // disc rim radius (where the U-notches are cut) — big enough that 16 U-slots
-    // fit with healthy lands between them
-    // Each notch is a U-SLOT (断面がU): straight parallel walls + a rounded semicircular
-    // bottom (a "cylinder + hemisphere"). Its WIDTH ≈ the ball ⌀ so the ball fits snugly and
-    // seats in the round bottom.
-    notchWidth: 0.5, // tangential slot width (≈ ball ⌀ 0.4, a touch wider so the round ball drops in)
-    notchDepth: 0.52, // radial depth from the rim to the deepest point of the round bottom
-    pocketCount: 16, // number of U-notches around the rim
-    thickness: 0.5, // disc thickness (visual + collider depth)
-    ballRadius: 0.2, // the lottery ball
-    spinSpeed: 0.45, // rad/s — the disc spins CONSTANTLY (no stop); the ball is caught by
-    // friction + the timing of a passing notch. POSITIVE = counterclockwise as the player
-    // sees it (direction per user request). |0.3| is too slow (few notch passes → long
-    // plays); |0.45| keeps plays moving.
-    railTilt: -0.3, // tilt of the whole rig (top leans back) so gravity presses the ball
-    // (with railRamp=0 — the 90° tray, per user — the tilt ALONE must both return the ball
-    // to the face and drop it into a passing notch. Verified at ramp 0: -0.25 → 0/3 resolve,
-    // -0.28 → 1/3; -0.3 is the practical minimum. Do NOT make it more upright without
-    // re-adding a ramp — which visibly breaks the 90° rail↔disc angle the user wants.)
-    // BACK onto the disc face / into a notch when one opens (bigger = drops in more readily)
-    // Arc rail: a HORIZONTAL TRAY (L-shape) that meets the disc FACE at 90°. It's a curved
-    // floor following the bottom rim (so the ball rolls to bottom-centre) that juts straight
-    // FORWARD (+Z, perpendicular to the face) as a shelf — NOT a band lying in the face plane.
-    // Because it extends purely along +Z at a CONSTANT radius, the shelf floor is perpendicular
-    // to the disc face (円盤とレールのなす角 = 90°); the rig's back-tilt (railTilt) then makes the
-    // shelf slope gently back toward the face so a settled ball still drops into a passing notch.
-    railRadius: 2.4, // radius the ball rides at (just inside the rim, on the face)
-    railArc: 0.62, // half-angle of the front arc (rad) → full sweep ≈ 71° (narrower so the ball
-    // reaches & SETTLES at the bottom quickly instead of skating over the wide shelf forever)
-    railFrontZ: 0.46, // the ball's NOMINAL z (near the face, where it meshes)
-    railDepth: 0.25, // how far FORWARD (+Z) the shelf juts out from the face (the tray depth).
-    // Ends flush with the front glass (glassZ = railFrontZ + ballRadius + 0.06): the glass
-    // sandwiches the ball close to the face, so a deeper tray is unreachable dead space.
-    railRamp: 0.0, // MUST stay 0 (per user): the shelf keeps a CONSTANT radius → its floor is
-    // perpendicular to the disc face (a true 90° L-shape; a ramp visibly breaks the 90°).
-    // The back-slope that returns the ball to the face comes from the rig tilt alone, so
-    // railTilt/railDepth must be tuned so a settled ball still reaches the face and meshes.
+  // JACKPOT BOWL (抽選ボウル) — on the RIGHT taper wall.
+  //
+  // A funnel: a ball is fired around the rim and spirals inward, orbiting for a
+  // long time before it finally plunges through the hole at the centre. While it
+  // circles, a roulette spins on the monitor; the segment under the pointer AT
+  // THE MOMENT the ball drops through is the prize.
+  //
+  // Nothing is scripted — the physics decides only WHEN the ball falls, and the
+  // when decides the what. That is the whole trick: the suspense is real because
+  // even the machine does not know the answer until the ball is gone.
+  bowl: {
+    // no `x` — see the note on the dice tray; wallMount() derives it
+    y: 1.35, // hole-plane height, matching the tray so the two read as a pair
+    z: 2.26,
+    rimRadius: 0.78, // outer lip the ball is launched against
+    holeRadius: 0.15, // centre opening — wider than the ball, so it always fits
+    depth: 0.56, // rim height above the hole plane
+    // Vortex profile exponent. Below 1 the surface is shallow out at the rim and
+    // plunges near the hole, so the ball laps the bowl for ages and then drops
+    // fast — a funnel, not a salad bowl.
+    profileExp: 0.55,
+    ballRadius: 0.1,
+    launchSpeed: 2.7, // tangential speed at the rim
+    // A play must always resolve: past this, the ball is nudged toward the centre
+    // a little harder every second until it goes in.
+    patience: 9.0,
+    segments: 16, // roulette wedges (exactly one is the JACKPOT)
   },
 } as const;
+
+/**
+ * Where the tapered side wall is, and which way it faces, at a given z.
+ *
+ * The dice tray and the jackpot bowl hang off the OUTSIDE of that wall, so both
+ * need the same two numbers: the point on its outer face, and its yaw. Deriving
+ * them here means the two units stay glued to the cabinet if the taper is ever
+ * re-cut — the alternative is two hand-copied magic numbers that silently come
+ * unstuck.
+ *
+ * `side` is -1 for the left wall, +1 for the right.
+ */
+export function wallMount(side: -1 | 1, z: number): { x: number; yaw: number } {
+  const t = LAYOUT.taper;
+  const run = LAYOUT.table.frontZ - t.startZ;
+  const drop = LAYOUT.halfWidth - t.frontHalfWidth;
+  // half-width of the FIELD at this z (constant behind the taper start)
+  const k = Math.max(0, Math.min(1, (z - t.startZ) / run));
+  const inner = LAYOUT.halfWidth - drop * k;
+  const yaw = Math.atan2(drop, run);
+  // outer face is one wall thickness out along the wall's normal
+  const outer = inner + LAYOUT.wallThickness / Math.cos(yaw);
+  return { x: side * outer, yaw: -side * yaw };
+}

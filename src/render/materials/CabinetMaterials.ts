@@ -8,7 +8,6 @@ export interface CabinetMaterials {
   accent: THREE.MeshStandardMaterial;
   neonBlue: THREE.MeshStandardMaterial;
   neonPink: THREE.MeshStandardMaterial;
-  chrome: THREE.MeshStandardMaterial;
 }
 
 export function createCabinetMaterials(): CabinetMaterials {
@@ -63,12 +62,5 @@ export function createCabinetMaterials(): CabinetMaterials {
     roughness: 0.35,
   });
 
-  const chrome = new THREE.MeshStandardMaterial({
-    color: 0xcfd6e6,
-    metalness: 1.0,
-    roughness: 0.18,
-    envMapIntensity: 1.4,
-  });
-
-  return { field, frame, pusher, accent, neonBlue, neonPink, chrome };
+  return { field, frame, pusher, accent, neonBlue, neonPink };
 }

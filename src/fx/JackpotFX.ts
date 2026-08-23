@@ -21,7 +21,7 @@ export class JackpotFX {
   ) {
     bus.on('fx:burst', ({ count, jackpot }) => this.burst.fire(count, jackpot));
     bus.on('fx:shake', ({ intensity, duration }) => this.camera.shake(intensity, duration));
-    bus.on('fx:flash', () => this.postfx.pulseBloom(2.0));
+    bus.on('fx:flash', ({ bloom }) => this.postfx.pulseBloom(bloom ?? 2.0));
   }
 
   /** Full jackpot celebration. */

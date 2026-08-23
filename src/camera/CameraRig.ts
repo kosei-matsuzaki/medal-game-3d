@@ -9,7 +9,7 @@ export interface CameraPose {
 
 /**
  * Main game camera with smoothly-damped pose transitions. CameraDirector pushes
- * named poses (play, slot, jackpot, bonus) and the rig eases toward them.
+ * named poses (play, board, jackpot, bonus) and the rig eases toward them.
  */
 export class CameraRig {
   readonly camera: THREE.PerspectiveCamera;
@@ -42,40 +42,61 @@ export class CameraRig {
     return this.free;
   }
 
-  // Fixed view that frames BOTH the playfield (front-low) and the back-top
-  // monitor (back-high). Used for everything — the camera no longer moves.
+  // Main view. Frames the playfield, the payout tray AND the back-top monitor —
+  // but tightly: the subject fills ~91% of frame height (it was 68%, which left
+  // the big black bands top and bottom). A longer lens (fov 46, was 56) flattens
+  // the perspective so the cabinet reads as a product shot, and the lower eye
+  // height (4.7, was 6.4) looks slightly UP at it, which makes it read as bigger.
   static readonly PLAY: CameraPose = {
-    position: new THREE.Vector3(0, 6.4, 14.2),
-    target: new THREE.Vector3(0, 1.35, -1.5),
-    fov: 56,
-  };
-  static readonly SLOT: CameraPose = {
-    position: new THREE.Vector3(0, 4.0, 6.4),
-    target: new THREE.Vector3(0, 2.6, -2.2),
-    fov: 38,
-  };
-  static readonly JACKPOT: CameraPose = {
-    position: new THREE.Vector3(0, 3.2, 7.8),
-    target: new THREE.Vector3(0, 1.6, -1.0),
-    fov: 50,
-  };
-  // Disc challenge — looks DOWN at the flat turntable installed on the RIGHT.
-  static readonly DISC: CameraPose = {
-    position: new THREE.Vector3(3.0, 5.4, 5.0),
-    target: new THREE.Vector3(4.6, 1.7, 0.4),
+    position: new THREE.Vector3(0, 4.7, 13.4),
+    target: new THREE.Vector3(0, 0.75, -0.2),
     fov: 46,
   };
-  // JP disc stage — faces the BIG VERTICAL rotating disc installed on the LEFT.
-  static readonly JPDROP: CameraPose = {
-    position: new THREE.Vector3(-4.2, 4.0, 9.2),
-    target: new THREE.Vector3(-5.6, 3.4, 0.4),
-    fov: 54,
+  // Board turn push-in — fills the frame with the monitor so the one moment the
+  // game is actually about isn't the smallest thing on screen.
+  static readonly SLOT: CameraPose = {
+    position: new THREE.Vector3(0, 3.9, 5.2),
+    target: new THREE.Vector3(0, 3.55, -2.2),
+    fov: 34,
   };
-  // Alternate FIXED view (closer) — also frames the field + monitor.
+  // Dice tray — the unit is BOLTED TO THE LEFT TAPER WALL at roughly
+  // (-3.26, 1.35, 2.22) rather than standing on a pedestal out at x=-4.3.
+  //
+  // Framed WIDE on purpose. A tight pose filled the screen with a metal box and
+  // cut the cabinet out entirely, which loses the one thing the new mounting was
+  // for — the tray is part of this machine. This keeps the cabinet's left flank
+  // and the monitor in frame while still reading the dice, and the sight line
+  // stays outboard of the cabinet so its own wall is never in the way.
+  static readonly DICE: CameraPose = {
+    position: new THREE.Vector3(-3.7, 4.35, 7.3),
+    target: new THREE.Vector3(-2.55, 1.95, 2.5),
+    fov: 40,
+  };
+  // チンチロ — the same tray, aimed OFF to the right of it so the tray lands in
+  // the left third of frame and the hand panel owns the right. Same trick the
+  // bowl pose uses; only the aim point moves, so the angle on the dice is
+  // unchanged.
+  static readonly CHINCHIRO: CameraPose = {
+    position: new THREE.Vector3(-3.7, 4.35, 7.3),
+    target: new THREE.Vector3(-1.9, 1.95, 2.4),
+    fov: 42,
+  };
+  // Jackpot bowl — looks DOWN INTO the funnel, now bolted to the RIGHT taper wall
+  // at roughly (3.43, 1.35, 2.26). Aimed LEFT of the bowl's centre on purpose, so
+  // the bowl sits in the right half of frame and the roulette overlay owns the
+  // left. Kept outboard of the cabinet for the same reason as the tray.
+  static readonly BOWL: CameraPose = {
+    position: new THREE.Vector3(3.8, 4.45, 7.4),
+    target: new THREE.Vector3(2.5, 2.0, 2.5),
+    fov: 40,
+  };
+  // Alternate FIXED view: tighter still on the field + monitor. Deliberately
+  // crops the payout tray — this is the "look at the machine" view, PLAY is the
+  // "play the machine" one.
   static readonly BONUS: CameraPose = {
-    position: new THREE.Vector3(0, 4.3, 8.6),
-    target: new THREE.Vector3(0, 1.1, -1.2),
-    fov: 56,
+    position: new THREE.Vector3(0, 3.9, 10.2),
+    target: new THREE.Vector3(0, 1.5, -1.0),
+    fov: 42,
   };
 
   setPose(pose: CameraPose): void {

@@ -2,17 +2,19 @@ import { bus } from '../core/EventBus';
 import { LAYOUT } from '../pusher/layout';
 import { GameStateMachine } from '../state/GameStateMachine';
 import { GameStore } from '../state/GameStore';
-import { BallManager } from '../pusher/BallManager';
+import { MiniBallManager } from '../pusher/MiniBallManager';
 import { MedalSpawner } from '../pusher/MedalSpawner';
 import { MedalPool } from '../pusher/MedalPool';
+import { Board } from '../state/Board';
 
 /** Systems the developer panel pokes at. */
 export interface DevPanelDeps {
   fsm: GameStateMachine;
   store: GameStore;
-  balls: BallManager;
+  balls: MiniBallManager;
   spawner: MedalSpawner;
   pool: MedalPool;
+  board: Board;
 }
 
 /**
@@ -47,17 +49,14 @@ export class DevPanel {
         </div>
         <div class="dev-sec">ミニゲーム</div>
         <div class="dev-grid">
-          <button data-act="disc">ディスクチャレンジ</button>
-          <button data-act="jp">JP チャレンジ</button>
-          <button data-act="slot">スロット</button>
+          <button data-act="bowl">抽選ボウル</button>
+          <button data-act="sugoroku">すごろく</button>
           <button data-act="idle">アイドルに戻す</button>
         </div>
-        <div class="dev-sec">ディスク</div>
+        <div class="dev-sec">ボード</div>
         <div class="dev-grid">
-          <button data-act="discJpSet">JP 確定セット</button>
-          <button data-act="discReset">ディスクリセット</button>
-          <button data-act="ball">ボール投入</button>
-          <button data-act="balls4">ボール×4 (JP発動)</button>
+          <button data-act="ball">ミニボール投入</button>
+          <button data-act="goalNear">ゴール目前に</button>
         </div>
         <div class="dev-sec">リソース / その他</div>
         <div class="dev-grid">
@@ -97,27 +96,19 @@ export class DevPanel {
   }
 
   /** Start a minigame, aborting any running one first so dev triggers always work. */
-  private startGame(kind: 'disc' | 'jackpot' | 'slot'): void {
+  private startGame(kind: 'bowl' | 'sugoroku'): void {
     this.deps.fsm.devReset();
     this.deps.fsm.forceEnter(kind);
   }
 
   private act(a: string): void {
-    const { fsm, store, balls, spawner, pool } = this.deps;
+    const { fsm, store, balls, spawner, pool, board } = this.deps;
     switch (a) {
-      case 'disc': this.startGame('disc'); break;
-      case 'jp': this.startGame('jackpot'); break;
-      case 'slot': this.startGame('slot'); break;
+      case 'bowl': this.startGame('bowl'); break;
+      case 'sugoroku': this.startGame('sugoroku'); break;
       case 'idle': fsm.devReset(); break;
-      case 'discJpSet': {
-        const { count, jpIndex } = LAYOUT.disc;
-        for (let i = 0; i < count; i++) if (i !== jpIndex) store.fillDiscHole(i);
-        this.msg('ディスク: JP 以外を全て埋めた（次はJP確定）');
-        break;
-      }
-      case 'discReset': store.resetDisc(); this.msg('ディスクをリセット'); break;
-      case 'ball': balls.spawn(); break;
-      case 'balls4': for (let i = 0; i < LAYOUT.ballsPerDisc; i++) bus.emit('ball:dropped', {}); break;
+      case 'ball': balls.dispense(); break;
+      case 'goalNear': board.debugGoalNear(); this.msg('ゴール手前に移動'); break;
       case 'credits': store.addCredits(1000); this.msg('クレジット +1000'); break;
       case 'pool': store.addToJackpot(5000); this.msg('JP プール +5000'); break;
       case 'medals': spawner.dispense(20, false); break;

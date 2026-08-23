@@ -4,15 +4,14 @@ export enum BodyTag {
   Static = 'static',
   Pusher = 'pusher',
   Medal = 'medal',
-  Ball = 'ball', // special ball that leads to the JP challenge
+  Ball = 'ball', // mini ball — drop it off the front to spin the すごろく board
   Payout = 'payout', // sensor: front payout slot
-  FallHole = 'fall', // sensor: side loss holes
-  Chucker = 'chucker', // sensor: slot lane (coin) / JP trigger (ball)
+  FallHole = 'fall', // sensor: the two SIDE DRAIN HOLES (medals + mini balls are lost)
 }
 
 export interface ColliderInfo {
   tag: BodyTag;
-  /** chucker id, target id, etc. */
+  /** mini-ball id, target id, etc. */
   id?: number;
   /** back-reference into a pool (medal slot index) */
   slot?: number;
@@ -28,7 +27,7 @@ export const GROUP = {
   MEDAL: 0b0010,
   SENSOR: 0b0100,
   BALL: 0b100000,
-  DISC: 0b1000000, // the JP disc lottery system (isolated from the main field)
+  BOWL: 0b1000000, // the jackpot bowl lottery (isolated from the main field)
 } as const;
 
 export function groups(membership: number, filter: number): number {

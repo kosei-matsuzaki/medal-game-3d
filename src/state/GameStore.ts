@@ -56,29 +56,6 @@ export class GameStore {
     return true;
   }
 
-  // --- disc (円盤) JP challenge persistent hole state -------------------
-  /** Snapshot of which of the 6 disc holes are currently filled. */
-  get discFilled(): boolean[] {
-    return this.save.get().disc.filled.slice();
-  }
-
-  /** Mark a disc hole filled (a non-JP ball settled there); persisted. */
-  fillDiscHole(index: number): void {
-    const d = this.save.get();
-    if (index < 0 || index >= d.disc.filled.length) return;
-    d.disc.filled[index] = true;
-    this.save.save();
-    bus.emit('disc:changed', { filled: d.disc.filled.slice() });
-  }
-
-  /** Clear all disc holes (after a JP win → 天井 reset). */
-  resetDisc(): void {
-    const d = this.save.get();
-    d.disc.filled = d.disc.filled.map(() => false);
-    this.save.save();
-    bus.emit('disc:changed', { filled: d.disc.filled.slice() });
-  }
-
   addToJackpot(amount: number): void {
     const d = this.save.get();
     d.jackpotPool += amount;

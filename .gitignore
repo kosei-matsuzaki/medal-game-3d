@@ -7,3 +7,4 @@ Thumbs.db
 # ローカル設定・テスト出力
 .claude/
 /*.png
+test/out-*.png

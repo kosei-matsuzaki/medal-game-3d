@@ -4,7 +4,12 @@ export default defineConfig({
   base: './',
   server: {
     host: true,
-    port: 5173,
+    // 5173 AND 5174 are both taken on this machine by the keiba-ai frontend
+    // (its vite auto-incremented off 5173), so this project sits on 5175.
+    // strictPort matters here: without it vite silently drifts to the next free
+    // port, and you end up staring at whichever app got there first.
+    port: 5175,
+    strictPort: true,
   },
   build: {
     target: 'es2020',

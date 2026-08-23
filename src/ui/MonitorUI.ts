@@ -91,13 +91,13 @@ export class MonitorUI {
     this.group.add(this.wash);
 
     // big reach callout — hidden until a reach fires (two variants)
-    this.reachTex = textTexture(1024, 220, 'リ ー チ !!', {
+    this.reachTex = textTexture(1024, 220, 'あ と 少 し !!', {
       font: '900 128px "Segoe UI", sans-serif',
       color: ['#fff', '#ffd34d', '#ff9d12'],
       glow: '#ffb030',
       glowBlur: 30,
     });
-    this.reachTexSuper = textTexture(1024, 220, '激 ア ツ !!', {
+    this.reachTexSuper = textTexture(1024, 220, '目 的 地 目 前 !!', {
       font: '900 128px "Segoe UI", sans-serif',
       color: ['#fff', '#ff8a5a', '#ff2b5e'],
       glow: '#ff3b5e',
@@ -113,8 +113,8 @@ export class MonitorUI {
 
     scene.add(this.group);
     bus.on('fever:changed', ({ active }) => this.setFever(active));
-    bus.on('slot:reach', ({ super: sup }) => this.onReach(sup));
-    bus.on('slot:outcome', ({ kind }) => this.onOutcome(kind));
+    bus.on('board:near', ({ big }) => this.onReach(big));
+    bus.on('board:outcome', ({ kind }) => this.onOutcome(kind));
   }
 
   private onReach(sup: boolean): void {

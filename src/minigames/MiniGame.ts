@@ -7,14 +7,20 @@ import { HUD } from '../ui/HUD';
 import { InputManager } from '../input/InputManager';
 import { PhysicsWorld } from '../physics/PhysicsWorld';
 import { Fever } from '../state/Fever';
+import { Board } from '../state/Board';
 
 export interface MiniGameResult {
+  /** medals PHYSICALLY dispensed onto the field (not credited directly) */
   payout: number;
+  /** medals taken back off the player's credit (赤マス) */
+  taken?: number;
+  /** medals added straight to the progressive pool (JPアップマス) */
+  jpAdd?: number;
   jackpot?: boolean;
   jackpotMult?: number; // JP drop stage — multiplies the awarded progressive jackpot
-  bonus?: 'jackpot'; // disc JP-Chance → chain into the dedicated JP (jackpot) stage
-  ball?: boolean; // slot BALL match → eject a ball (→ disc challenge)
-  feverAction?: FeverAction; // slot only — drives the internal FEVER state
+  /** chain into another stage: 目的地到着 → 'station' (disc), JP-Chance → 'jackpot' */
+  bonus?: 'jackpot' | 'station';
+  feverAction?: FeverAction; // board only — drives the internal FEVER state
   label: string;
 }
 
@@ -28,6 +34,7 @@ export interface MiniGameContext {
   input: InputManager;
   physics: PhysicsWorld;
   fever: Fever;
+  board: Board;
 }
 
 export interface MiniGame {

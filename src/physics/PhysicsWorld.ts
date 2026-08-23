@@ -17,6 +17,14 @@ export type IntersectionListener = (
  * and sensor/collision event dispatch. RAPIER.init() must be awaited before
  * constructing.
  */
+/**
+ * Downward acceleration, exported because things that are THROWN have to be
+ * aimed against it. This is deliberately heavier than earth gravity — coins that
+ * fall at 9.81 in a cabinet this size drift like paper — and anything computing a
+ * trajectory must read it from here rather than assume a value.
+ */
+export const GRAVITY = 15.5;
+
 export class PhysicsWorld {
   readonly world: RAPIER.World;
   readonly RAPIER = RAPIER;
@@ -30,7 +38,10 @@ export class PhysicsWorld {
   }
 
   private constructor() {
-    this.world = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+    // Heavier-than-earth on purpose. At 1g these objects are small enough that
+    // they float down and skate about; the extra pull makes coins land with a
+    // thud, stacks settle instead of drifting, and dice stop tumbling sooner.
+    this.world = new RAPIER.World({ x: 0, y: -GRAVITY, z: 0 });
     this.world.timestep = FIXED_DT;
     this.world.integrationParameters.numSolverIterations = 4;
     this.events = new RAPIER.EventQueue(true);

@@ -63,7 +63,11 @@ export class Progression {
 
   private onLevelUp(level: number): void {
     const rank = rankFor(level);
-    const bonus = 50 + level * 25; // scaling level-up credit reward
+    // Kept small ON PURPOSE. EXP is earned from credits WON, so this bonus is a
+    // straight kickback on winnings: at `50 + 25L` against `120 + 70(L-1)` EXP it
+    // returned ~37% of everything the player ever won, forever, and that alone
+    // pushed the payout ratio past 110%. This ratio settles near 15%.
+    const bonus = 10 + level * 2;
     this.granting = true;
     this.store.addCredits(bonus);
     this.granting = false;

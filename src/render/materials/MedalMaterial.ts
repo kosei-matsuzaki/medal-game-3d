@@ -1,43 +1,80 @@
 import * as THREE from 'three';
-import { medalRoughnessMap, medalEmblemMap } from './textureGen';
+import {
+  medalRoughnessMap,
+  medalFaceMap,
+  medalBumpMap,
+  medalEdgeMap,
+  medalEdgeBumpMap,
+} from './medalTexture';
 
+/**
+ * Materials for one medal, in CylinderGeometry group order: [side, top, bottom].
+ *
+ * The edge gets its own material rather than sharing the face's. A cylinder side
+ * band stretched with a face texture is exactly the smooth, featureless rim that
+ * makes a 3D coin look cheap; giving it milled flutes of its own is the single
+ * cheapest thing that makes one read as struck metal.
+ */
 export interface MedalMaterials {
-  standard: THREE.MeshPhysicalMaterial;
-  jackpot: THREE.MeshPhysicalMaterial;
+  standard: THREE.MeshPhysicalMaterial[];
+  jackpot: THREE.MeshPhysicalMaterial[];
 }
 
 /**
- * Gold PBR medal material. The jackpot variant is emissive so it drives bloom
- * during the mass-payout rain.
+ * Silver PBR medal. The jackpot variant is emissive so it drives bloom during the
+ * mass-payout rain — it is the same coin catching a light the others do not.
  */
 export function createMedalMaterials(): MedalMaterials {
   const rough = medalRoughnessMap();
-  const emblem = medalEmblemMap();
+  const face = medalFaceMap();
+  const bump = medalBumpMap();
+  const edge = medalEdgeMap();
+  const edgeBump = medalEdgeBumpMap();
 
-  const standard = new THREE.MeshPhysicalMaterial({
-    color: 0xffc64a,
-    metalness: 1.0,
-    roughness: 0.32,
+  // WHITE, with the nickel tint carried by the maps instead.
+  //
+  // `color` multiplies `map`, and at metalness 1 the product is the specular
+  // colour — so tinting here as well as in the texture squares the darkening and
+  // sinks the whole coin toward black. The maps are already the colour the metal
+  // should be; this must not darken them again.
+  const SILVER = 0xffffff;
+
+  const faceMat = new THREE.MeshPhysicalMaterial({
+    color: SILVER,
+    map: face,
+    bumpMap: bump,
+    bumpScale: 0.9,
     roughnessMap: rough,
-    map: emblem,
-    clearcoat: 0.4,
-    clearcoatRoughness: 0.35,
-    envMapIntensity: 1.35,
-  });
-  // tint the emblem map toward gold so the $ reads as engraved gold, not gray
-  standard.map!.colorSpace = THREE.SRGBColorSpace;
-
-  const jackpot = new THREE.MeshPhysicalMaterial({
-    color: 0xfff0b0,
     metalness: 1.0,
-    roughness: 0.22,
-    roughnessMap: rough,
-    map: emblem,
-    emissive: 0xffaa22,
-    emissiveIntensity: 1.6,
-    clearcoat: 0.6,
-    envMapIntensity: 1.6,
+    roughness: 0.3,
+    clearcoat: 0.25,
+    clearcoatRoughness: 0.4,
+    envMapIntensity: 1.5,
   });
 
-  return { standard, jackpot };
+  const edgeMat = new THREE.MeshPhysicalMaterial({
+    color: SILVER,
+    map: edge,
+    bumpMap: edgeBump,
+    bumpScale: 1.4,
+    metalness: 1.0,
+    // rougher than the face: the milled edge is the part that never gets polished
+    roughness: 0.42,
+    envMapIntensity: 1.45,
+  });
+
+  const gold = (m: THREE.MeshPhysicalMaterial): THREE.MeshPhysicalMaterial => {
+    const j = m.clone();
+    j.color = new THREE.Color(0xfff2c8);
+    j.emissive = new THREE.Color(0xffb040);
+    j.emissiveIntensity = 1.5;
+    j.roughness = Math.max(0.16, m.roughness - 0.1);
+    j.envMapIntensity = 1.7;
+    return j;
+  };
+
+  return {
+    standard: [edgeMat, faceMat, faceMat],
+    jackpot: [gold(edgeMat), gold(faceMat), gold(faceMat)],
+  };
 }

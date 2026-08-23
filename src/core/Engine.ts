@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createRenderer } from '../render/RendererFactory';
 import { setupEnvironment } from '../render/Environment';
 import { setupLighting } from '../render/Lighting';
+import { setupFloor } from '../render/Floor';
 import { PostFX, QualityTier } from '../render/PostFX';
 import { CameraRig } from '../camera/CameraRig';
 
@@ -18,6 +19,7 @@ export class Engine {
     this.renderer = createRenderer(canvas);
     this.cameraRig = new CameraRig(window.innerWidth / window.innerHeight);
     setupLighting(this.scene);
+    setupFloor(this.scene);
     window.addEventListener('resize', this.onResize);
   }
 

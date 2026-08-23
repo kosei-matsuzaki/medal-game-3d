@@ -19,17 +19,29 @@ export class PusherPlate {
   private t = 0;
 
   /** Local-space trapezoid corner points (body frame). */
+  /** Run of the ramp in z, i.e. how far back the slope travels to reach the top. */
+  static rampRun(): number {
+    const p = LAYOUT.pusher;
+    return (p.topY - p.faceHeight) / Math.tan((p.slopeAngleDeg * Math.PI) / 180);
+  }
+
   static cornerPoints(): THREE.Vector3[] {
     const p = LAYOUT.pusher;
     const hw = p.halfWidth;
-    const run = p.topY / Math.tan((p.slopeAngleDeg * Math.PI) / 180);
-    const topFront = p.frontBottom - run;
+    const topFront = p.frontBottom - PusherPlate.rampRun();
     const back = -p.backDepth;
     return [
+      // bottom slab
       new THREE.Vector3(-hw, 0, back),
       new THREE.Vector3(hw, 0, back),
       new THREE.Vector3(-hw, 0, p.frontBottom),
       new THREE.Vector3(hw, 0, p.frontBottom),
+      // TOP OF THE VERTICAL PUSHING FACE — this is the edge that actually shoves
+      // the coins lying on the lower table. Without it the ramp tapers to nothing
+      // at floor level and rides straight over them.
+      new THREE.Vector3(-hw, p.faceHeight, p.frontBottom),
+      new THREE.Vector3(hw, p.faceHeight, p.frontBottom),
+      // deck top
       new THREE.Vector3(-hw, p.topY, back),
       new THREE.Vector3(hw, p.topY, back),
       new THREE.Vector3(-hw, p.topY, topFront),
@@ -73,7 +85,7 @@ export class PusherPlate {
     this.group.add(deck);
 
     // glowing trim along the top-front edge of the ramp
-    const run = p.topY / Math.tan((p.slopeAngleDeg * Math.PI) / 180);
+    const run = PusherPlate.rampRun();
     const trim = new THREE.Mesh(
       new THREE.BoxGeometry(p.halfWidth * 2, 0.05, 0.05),
       mats.accent
@@ -81,63 +93,16 @@ export class PusherPlate {
     trim.position.set(0, p.topY, p.frontBottom - run);
     this.group.add(trim);
 
-    this.buildSlotLane(physics, mats);
+    // and a line along the top of the vertical face, so the edge that does the
+    // pushing is visible against the coin bank
+    const faceTrim = new THREE.Mesh(
+      new THREE.BoxGeometry(p.halfWidth * 2, 0.04, 0.04),
+      mats.accent
+    );
+    faceTrim.position.set(0, p.faceHeight, p.frontBottom);
+    this.group.add(faceTrim);
 
     scene.add(this.group);
-  }
-
-  /** The slot lane: TWO divider walls forming a centre lane on the ramp, plus a
-   *  trigger sensor between them. A coin sliding down between the walls starts the
-   *  slot. Part of the moving deck. */
-  private buildSlotLane(physics: PhysicsWorld, mats: CabinetMaterials): void {
-    const sl = LAYOUT.slotLane;
-    const R = physics.RAPIER;
-
-    // two divider walls (left & right of the centre lane)
-    for (const sx of [-1, 1]) {
-      const wallCol = R.ColliderDesc.cuboid(sl.wallThickness / 2, sl.wallHeight / 2, sl.zDepth / 2)
-        .setTranslation(sx * sl.xHalf, sl.wallHeight / 2, sl.zLocal)
-        .setFriction(0.4)
-        .setCollisionGroups(groups(GROUP.STATIC, GROUP.MEDAL | GROUP.BALL));
-      physics.registerCollider(physics.world.createCollider(wallCol, this.body), {
-        tag: BodyTag.Pusher,
-      });
-      const wall = new THREE.Mesh(
-        new THREE.BoxGeometry(sl.wallThickness, sl.wallHeight, sl.zDepth),
-        mats.chrome
-      );
-      wall.position.set(sx * sl.xHalf, sl.wallHeight / 2, sl.zLocal);
-      wall.castShadow = true;
-      this.group.add(wall);
-      // neon edge on top of each wall
-      const edge = new THREE.Mesh(
-        new THREE.BoxGeometry(sl.wallThickness + 0.02, 0.04, sl.zDepth),
-        mats.neonBlue
-      );
-      edge.position.set(sx * sl.xHalf, sl.wallHeight, sl.zLocal);
-      this.group.add(edge);
-    }
-
-    // trigger sensor between the walls — a COIN sliding through starts the slot.
-    // Balls are excluded (MEDAL only): a ball must roll to the FRONT, not be caught
-    // here, so the centre lane never consumes it.
-    const sensor = R.ColliderDesc.cuboid(sl.xHalf - 0.02, 0.3, sl.zDepth / 2)
-      .setTranslation(0, sl.sensorY, sl.zLocal)
-      .setSensor(true)
-      .setActiveEvents(R.ActiveEvents.COLLISION_EVENTS)
-      .setCollisionGroups(groups(GROUP.SENSOR, GROUP.MEDAL));
-    physics.registerCollider(physics.world.createCollider(sensor, this.body), {
-      tag: BodyTag.Chucker,
-      id: 0,
-    });
-
-    // glowing floor strip marking the slot lane
-    const glow = new THREE.Mesh(
-      new THREE.BoxGeometry(sl.xHalf * 2 - 0.04, 0.02, sl.zDepth),
-      mats.neonPink
-    );
-    glow.position.set(0, 0.06, sl.zLocal);
-    this.group.add(glow);
   }
 
   /** Current world-space Z of the deck. */

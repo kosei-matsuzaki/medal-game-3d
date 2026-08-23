@@ -8,29 +8,39 @@ export type GameEvents = {
   // physics → game
   'medal:payout': { count: number };
   'medal:fall': { count: number };
-  'medal:chucker': { id: number; slot: number };
   // economy / store
   'credits:changed': { credits: number; delta: number };
   'jackpot:changed': { pool: number };
   'jackpot:won': { amount: number };
+  // smoothed pool figure for the cabinet monitor (the HUD no longer shows it)
+  'jackpot:display': { amount: number };
   // state machine
   'state:changed': { from: GameState; to: GameState };
   // minigame
   'minigame:start': { kind: MiniGameKind };
   'minigame:result': { kind: MiniGameKind; payout: number };
-  // slot stock
-  'stock:changed': { slots: number[] };
-  // ball (slot BALL match → field ball → accumulate → disc challenge)
-  'slot:ball': {};
+  // すごろく board: the piece moved / journey state changed
+  'board:changed': {
+    pos: number;
+    toGoal: number;
+    runs: number;
+    twice: boolean;
+    pick: boolean;
+    boost: boolean;
+  };
+  // the throw is about to carry the piece onto the GOAL — drives the monitor's
+  // tension reaction
+  'board:near': { toGoal: number; big: boolean };
+  // a spin resolved (drives the monitor reaction FX)
+  'board:outcome': { kind: 'bigwin' | 'win' | 'near' | 'miss' };
+  // turns earned but not yet played. Cubes can pile into the tray faster than
+  // the board can work through them, and a queue the player cannot see reads as
+  // the machine having swallowed their cube.
+  'board:stock': { pending: number };
+  // mini cube reached the payout tray — earns one board turn
+  'ball:scored': {};
+  // mini ball went down a side hole / out of bounds — lost, no spin
   'ball:lost': {};
-  // slot reach (リーチ): the two outer reels matched, the middle reel is deciding
-  'slot:reach': { symbol: string; super: boolean };
-  // slot spin resolved (drives the monitor reaction FX)
-  'slot:outcome': { kind: 'bigwin' | 'win' | 'near' | 'miss' };
-  // a field ball left play (lane / payout / fall) — counts toward the disc trigger
-  'ball:dropped': {};
-  // disc (円盤) JP challenge: persistent hole state changed
-  'disc:changed': { filled: boolean[] };
   // progression
   'exp:changed': { level: number; exp: number; need: number; rank: string };
   'level:up': { level: number; rank: string; bonus: number };
@@ -39,7 +49,7 @@ export type GameEvents = {
   // fx requests
   'fx:burst': { count: number; jackpot?: boolean };
   'fx:shake': { intensity: number; duration: number };
-  'fx:flash': { color?: number };
+  'fx:flash': { color?: number; bloom?: number };
   // input / ui
   'input:drop': { x: number };
   // free camera control (right-drag orbit / wheel zoom / middle-drag pan)

@@ -35,10 +35,6 @@ export class DropDetector {
         this.pool.reclaim(slot);
         bus.emit('medal:fall', { count: 1 });
         break;
-      case BodyTag.Chucker:
-        // coin slid down the slot lane — stock a spin; the coin continues
-        bus.emit('medal:chucker', { id: sensor.id ?? 0, slot });
-        break;
       default:
         break;
     }

@@ -7,15 +7,14 @@ import { PusherPlate } from '../pusher/PusherPlate';
 import { MedalPool } from '../pusher/MedalPool';
 import { MedalSpawner } from '../pusher/MedalSpawner';
 import { DropDetector } from '../pusher/DropDetector';
-import { BallManager } from '../pusher/BallManager';
+import { MiniBallManager } from '../pusher/MiniBallManager';
 import { LAYOUT } from '../pusher/layout';
 import { SaveManager } from '../save/SaveManager';
 import { GameStore } from '../state/GameStore';
 import { Economy } from '../state/Economy';
 import { Progression } from '../state/Progression';
 import { Fever } from '../state/Fever';
-import { SlotStock } from '../state/SlotStock';
-import { StockDisplay } from '../ui/StockDisplay';
+import { Board } from '../state/Board';
 import { MonitorUI } from '../ui/MonitorUI';
 import { GameStateMachine } from '../state/GameStateMachine';
 import { HUD } from '../ui/HUD';
@@ -37,13 +36,15 @@ export class Game {
   private pool!: MedalPool;
   private pusher!: PusherPlate;
   private spawner!: MedalSpawner;
-  private balls!: BallManager;
-  private ballDrops = 0; // field balls that have left play (→ disc challenge)
-  private pendingDisc = false;
+  private balls!: MiniBallManager;
+  /** medals inserted since the last mini ball came out of the hopper */
+  private sinceBall = 0;
+  /** board turns earned but not yet played (a ball can land mid-turn) */
+  private pendingSpins = 0;
   private save = new SaveManager();
   private store = new GameStore(this.save);
   private economy = new Economy(this.store);
-  private stock = new SlotStock();
+  private board = new Board(this.save);
   private fever = new Fever();
   private progression!: Progression;
   private monitorUI!: MonitorUI;
@@ -82,7 +83,7 @@ export class Game {
     this.pool = new MedalPool(this.physics, this.engine.scene);
     this.pusher = new PusherPlate(this.physics, this.engine.scene, cabinet.mats);
     this.spawner = new MedalSpawner(this.pool);
-    this.balls = new BallManager(this.physics, this.engine.scene);
+    this.balls = new MiniBallManager(this.physics, this.engine.scene);
     new DropDetector(this.physics, this.pool);
 
     this.setLoading(0.8, 'UI / 演出…');
@@ -91,7 +92,6 @@ export class Game {
     // initial level/rank state paints into a live panel.
     this.progression = new Progression(this.store);
     this.monitorUI = new MonitorUI(this.engine.scene);
-    new StockDisplay(this.engine.scene);
     this.audio = new AudioManager(this.save);
     this.input = new InputManager(this.canvas, () => this.engine.cameraRig.camera);
     this.particles = new Particles(this.engine.scene);
@@ -107,6 +107,7 @@ export class Game {
       this.input,
       this.hud,
       this.fever,
+      this.board,
       { scene: this.engine.scene, particles: this.particles, physics: this.physics }
     );
 
@@ -123,6 +124,7 @@ export class Game {
       balls: this.balls,
       spawner: this.spawner,
       pool: this.pool,
+      board: this.board,
     });
     this.setLoading(1, 'READY');
     setTimeout(() => this.hideLoading(), 400);
@@ -134,27 +136,22 @@ export class Game {
   private wireEvents(): void {
     bus.on('input:drop', () => this.tryDrop());
     bus.on('medal:payout', () => {
-      this.store.addCredits(this.fever.mult); // FEVER (internal) doubles front payouts
+      // ALWAYS 1 credit per medal. FEVER deliberately does NOT apply here: paying
+      // 2 for a medal that cost 1 makes the pusher itself profitable, and the
+      // player can then farm it by inserting alone. FEVER doubles BOARD winnings
+      // instead (see GameStateMachine.onResult), which is where a multiplier
+      // belongs — on what the machine gives you, not on your own medals.
+      this.store.addCredits(1);
       bus.emit('sfx', { name: 'coin' });
     });
-    bus.on('medal:fall', () => this.economy.accrue(1));
-    // a coin sliding down the centre lane stocks a slot spin (once per coin, so a
-    // single coin / sensor jitter can't flood the stock)
-    bus.on('medal:chucker', ({ slot }) => {
-      if (!this.pool.tryStock(slot)) return;
-      this.stock.add();
+    bus.on('medal:fall', () => this.economy.fundFromLoss(1));
+    // A mini ball that reaches the payout tray earns exactly one board turn. It is
+    // queued rather than played immediately, because a second ball can easily land
+    // while the first turn is still on screen.
+    bus.on('ball:scored', () => {
+      this.pendingSpins++;
+      bus.emit('board:stock', { pending: this.pendingSpins });
       bus.emit('sfx', { name: 'chucker' });
-    });
-    // slot BALL match → eject a ball; every ball that leaves the field counts,
-    // and once BALLS_PER_DISC have dropped the disc (円盤) JP challenge fires.
-    bus.on('slot:ball', () => this.balls.spawn());
-    bus.on('ball:dropped', () => {
-      this.ballDrops++;
-      const need = LAYOUT.ballsPerDisc;
-      if (this.ballDrops >= need) {
-        this.ballDrops = 0;
-        this.pendingDisc = true;
-      }
     });
 
     this.hud.onCameraToggle(() => {
@@ -171,19 +168,29 @@ export class Game {
     bus.on('camera:zoom', ({ delta }) => this.engine.cameraRig.zoom(delta));
   }
 
-  private tryDrop(): void {
+  /** Insert one medal. Returns false if the field is full or credit ran out. */
+  private tryDrop(): boolean {
     if (this.pool.activeCount >= LAYOUT.maxMedals) {
-      return;
+      return false;
     }
     if (!this.store.spend(1)) {
-      return;
+      return false;
     }
-    this.economy.accrue(0.5); // a share of inserted medals funds the jackpot
+    this.economy.fundFromInsert(); // a slice of every insert funds the jackpot
     // toss the coin into the back of the upper deck at the aimed X — a parabolic
     // arc (up + back, tumbling) so it reads as being thrown in, not dropped; the
     // pusher then feeds it forward.
     const ax = Math.max(-1, Math.min(1, this.input.aimNorm)) * (LAYOUT.pusher.halfWidth - 0.5);
     this.spawner.toss(ax);
+
+    // Every `medalsPerBall` inserted medals, the hopper drops a mini ball. This is
+    // the ONLY route to a board turn, so board frequency is tied directly to how
+    // much the player has fed the machine.
+    if (++this.sinceBall >= LAYOUT.medalsPerBall) {
+      this.sinceBall = 0;
+      this.balls.dispense();
+    }
+    return true;
   }
 
   /** Seed a starting pile by dropping coins through the chute; the pusher then
@@ -193,7 +200,7 @@ export class Game {
     this.spawner.dispense(count, false);
   }
 
-  /** Start with two balls, inserted from the medal/chute height like coins. */
+  /** Start with a couple of mini balls so a fresh session has something to chase. */
   private seedBalls(): void {
     this.balls.spawnAt(-0.5, LAYOUT.chute.y, LAYOUT.chute.z);
     this.balls.spawnAt(0.5, LAYOUT.chute.y, LAYOUT.chute.z + 0.4);
@@ -208,26 +215,34 @@ export class Game {
       this.pool.tickReclaims(dt);
       this.pool.cullOutOfBounds();
     };
-    this.loop.update = (dt) => {
+    // Split so turbo can run the LOGIC without the PRESENTATION. Everything that
+    // changes game state lives in `logic`; everything that only exists to be
+    // looked at lives in `present`. Normal play runs both, every frame.
+    const logic = (dt: number) => {
       this.input.update(dt);
       this.fever.update(dt);
-      this.monitorUI.update(dt);
-      // when idle: a pending ball→JP takes priority, else auto-play stocked spins
-      if (this.fsm.state === 'idle' && !this.fsm.ignoreChuckers) {
-        if (this.pendingDisc) {
-          this.pendingDisc = false;
-          this.fsm.requestDisc();
-        } else if (this.stock.count > 0) {
-          this.fsm.playSlot(this.stock.consume());
+      // when idle: play the next earned board turn
+      if (this.fsm.state === 'idle' && this.pendingSpins > 0 && !this.fsm.ignoreChuckers) {
+        if (this.fsm.playSpin()) {
+          this.pendingSpins--;
+          bus.emit('board:stock', { pending: this.pendingSpins });
         }
       }
       this.fsm.update(dt);
+    };
+    const present = (dt: number) => {
+      this.monitorUI.update(dt);
       this.fx.update(dt);
       this.engine.cameraRig.update(dt);
       this.engine.postfx.update(dt);
       this.hud.update(dt);
       this.hud.setMedalCount(this.pool.activeCount);
     };
+    this.loop.update = (dt) => {
+      logic(dt);
+      present(dt);
+    };
+    this.loop.turboUpdate = logic;
     this.loop.render = () => {
       this.pool.syncInstances();
       this.balls.update();
@@ -239,17 +254,19 @@ export class Game {
   /** Expose the `window.__medal` debug console (no-op unless ?debug is present). */
   private exposeDebug(): void {
     installDebug({
+      loop: this.loop,
       fsm: this.fsm,
       store: this.store,
       fever: this.fever,
       monitorUI: this.monitorUI,
       pool: this.pool,
-      stock: this.stock,
+      board: this.board,
       economy: this.economy,
       balls: this.balls,
       pusher: this.pusher,
       rig: this.engine.cameraRig,
       fill: (n) => this.seedField(n),
+      insert: () => this.tryDrop(),
     });
   }
 
