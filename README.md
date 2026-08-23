@@ -6,7 +6,8 @@ Three.js + Rapier（物理エンジン）で動く、ブラウザ向けの本格
 **外部アセットは一切不要**（テクスチャ・効果音まですべてコードで手続き生成）で、
 `npm install` だけで動きます。
 
-> 作品概要・スクリーンショット・AI 利用については [docs/PORTFOLIO.md](docs/PORTFOLIO.md) を参照してください。
+> 作品概要・スクリーンショット・AI 利用については [docs/PORTFOLIO.md](docs/PORTFOLIO.md)、
+> 画づくり・UI の設計方針と改善指示は [docs/design-review.md](docs/design-review.md) を参照してください。
 
 ![gameplay](docs/screenshots/01-gameplay.png)
 
@@ -26,7 +27,7 @@ npm run preview
 | --- | --- |
 | クリック / Space | メダル投入（ホールドで連続投入、←→キーで投入位置を調整） |
 | 右ドラッグ / ホイール / 中ドラッグ | カメラ自由視点（オービット / ズーム / パン） |
-| ` （バッククォート）/ F2 | 開発者パネル（ミニゲーム強制起動・リソース操作） |
+| 🛠 タブ / ` （バッククォート）/ F2 | 開発者パネル（すごろく・抽選ボウル・チンチロの強制起動、クレジット/JP 操作） |
 
 ### ゲームループ
 
@@ -102,6 +103,38 @@ s=29.3% なら**盤面が 1 枚も払わなくても 71% は返ってしまう**
 > `medalsPerBall` 25→40 で 90% に着地させています。
 > **メダルの寸法を触ったら必ず `draintest` を回し直してください。**
 
+## アーキテクチャ
+
+```
+src/
+  core/      Engine / Loop(固定 60Hz + turbo/runSteps) / Game / EventBus(型付き) / debug(?debug API)
+  render/    RendererFactory / Environment(IBL) / Lighting / PostFX(N8AO→Bloom→SMAA→Vignette)
+             Floor(暗い床 + 足元の加算プール) / idleGlow(出番でない機の減光) / dieFaces(サイコロの目)
+             materials/ MedalMaterial + medalTexture(洋銀・3枚一致マップ) / CabinetMaterials / canvasText
+  physics/   PhysicsWorld(Rapier ラッパ) / types(衝突グループ・BodyTag)
+  pusher/    PusherCabinet(筐体・台形壁・横穴) / PusherPlate(kinematic 往復 + センサ)
+             MedalPool(InstancedMesh 2枚 + ボディプール、最大500枚) / MedalSpawner(初速を重力から逆算)
+             MiniBallManager(ダイス排出) / DropDetector / layout.ts(全寸法・wallMount)
+  camera/    CameraRig(演出ポーズ補間 + 自由オービット)
+  input/     InputManager(pointer/keyboard、カメラ操作の振り分け)
+  state/     GameStateMachine / GameStore(observable) / Board(すごろく盤面と配当)
+             Economy(RNG・ジャックポット) / Fever / Progression
+  minigames/ Sugoroku / JackpotBowl / Chinchiro / DiceTray(実物理サイコロ、すごろくとチンチロで共有)
+             boardArt(盤面の描画言語) / MiniGame(共通インターフェース)
+  fx/        Particles / MedalBurst / JackpotFX
+  ui/        HUD(DOM) / MonitorUI(3D 画面) / monitorAnchor(モニタ面への貼り付け) / DevPanel
+  audio/     AudioManager(Web Audio で全 SFX を合成)
+  save/      SaveManager(localStorage・バージョン移行)
+```
+
+設計の要点:
+
+- **物理が座標を持ち、描画は読むだけ** — Rapier のボディが唯一の真実で、three.js は毎フレーム転写するのみ。
+- **メダルは InstancedMesh 2枚**（通常/発光JP）で全枚数を賄い、剛体はプール再利用。最大 500 枚が同時に転がってもドローコールは増えない。
+- **抽選を仕込まない** — 抽選ボウルもチンチロもサイコロも、乱数でボールを誘導していない。物理が決めた「いつ落ちたか / どの面が上か」がそのまま結果。乱数は盤面のマス構成と JP 側（`Economy.ts`）にしかない。
+- **イベント駆動** — 型付き EventBus で物理・状態・UI・音を疎結合に。
+- **チューニング値は 3 ファイルに集約** — `pusher/layout.ts`（寸法・速度・`medalsPerBall`）、`state/Board.ts`（`PAYOUT_SCALE` と盤面の配当カーブ）、`state/Economy.ts`（確率・ジャックポット）。
+
 ## 検証（E2E テスト）
 
 Playwright + headless Chromium による自動テスト。`?debug` で `window.__medal`
@@ -117,6 +150,8 @@ URL=http://localhost:4176/ node test/boardtest.mjs   # すごろく進行・GOAL
 URL=http://localhost:4176/ node test/chintest.mjs    # チンチロ単体（賭け金0なら払い出し0）
 URL=http://localhost:4176/ node test/richtest.mjs    # 出目分布・FEVER 検証（6万回サンプル）
 URL=http://localhost:4176/ node test/draintest.mjs   # 横穴の排出率実測 → 払い出し率の逆算
+URL=http://localhost:4176/ node test/perftest.mjs    # 500枚時のフレーム間隔・物理コスト
+URL=http://localhost:4176/ node test/playtest.mjs    # 長時間の通し稼働（クレジット推移・例外検出）
 ```
 
 ### TURBO —— 物理テストを CPU を焼かずに回す
@@ -136,8 +171,10 @@ window.__medal.turbo(0);    // 通常再生に戻す（スクリーンショッ�
 window.__medal.gameSeconds();  // 経過したゲーム内秒数
 ```
 
-`smoketest` 以外の 5 本はすべて turbo を内蔵済みです（`draintest` は turbo ではなく
-同期版の `simulate()` を使い、フレームすら待ちません）。
+物理を待つテスト——`flowtest` / `boardtest` / `chintest`——はすべて turbo を内蔵済みです。
+`draintest` はさらに踏み込んで、turbo ではなく同期版の `simulate()` を使い、フレームすら待ちません。
+`richtest` は `Economy` の乱数を直接叩くだけ、`smoketest` は短いので、どちらも必要としません。
+`perftest` / `playtest` は**実時間の挙動そのものを測る**テストなので、turbo を使ってはいけません。
 
 長いテストを書くときの原則:
 
